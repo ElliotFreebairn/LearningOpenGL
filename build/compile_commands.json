@@ -1,0 +1,14 @@
+[
+{
+  "directory": "/home/elliot-freebairn/Documents/LearningOpenGL/build",
+  "command": "/usr/bin/c++ -I/home/elliot-freebairn/Documents/LearningOpenGL/include -g -o CMakeFiles/learning_opengl_project.dir/src/main.cpp.o -c /home/elliot-freebairn/Documents/LearningOpenGL/src/main.cpp",
+  "file": "/home/elliot-freebairn/Documents/LearningOpenGL/src/main.cpp",
+  "output": "CMakeFiles/learning_opengl_project.dir/src/main.cpp.o"
+},
+{
+  "directory": "/home/elliot-freebairn/Documents/LearningOpenGL/build",
+  "command": "/usr/bin/cc -I/home/elliot-freebairn/Documents/LearningOpenGL/include -g -o CMakeFiles/learning_opengl_project.dir/src/glad.c.o -c /home/elliot-freebairn/Documents/LearningOpenGL/src/glad.c",
+  "file": "/home/elliot-freebairn/Documents/LearningOpenGL/src/glad.c",
+  "output": "CMakeFiles/learning_opengl_project.dir/src/glad.c.o"
+}
+]

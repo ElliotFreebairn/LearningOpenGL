@@ -1,0 +1,1 @@
+/usr/bin/c++ -g CMakeFiles/learning_opengl_project.dir/src/main.cpp.o CMakeFiles/learning_opengl_project.dir/src/glad.c.o -o learning_opengl_project  -lglfw 
