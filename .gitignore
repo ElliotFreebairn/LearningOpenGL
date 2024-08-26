@@ -4,3 +4,6 @@
 *.so
 .*
 .ninja*
+
+# Ignore the entire build directory
+/build/
