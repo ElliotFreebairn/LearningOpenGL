@@ -1,9 +1,9 @@
 # Ignore the entire build directory
-/build/
+build/
 
 # Ignore any .ninja files globally
 *.ninja
 
 # Specifically ignore .ninja_log and other ninja-related files
-/build/.ninja_log
-/build/.ninja_deps
+build/.ninja_log
+build/.ninja_deps
