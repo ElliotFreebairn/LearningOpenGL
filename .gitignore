@@ -7,3 +7,4 @@
 # Specifically ignore .ninja_log and other ninja-related files
 /build/.ninja_log
 /build/.ninja_deps
+/.vscode/
