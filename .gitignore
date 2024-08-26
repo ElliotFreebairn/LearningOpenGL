@@ -1,0 +1,6 @@
+# Ignore binary files
+*.exe
+*.dll
+*.so
+.*
+.ninja*
