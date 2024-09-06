@@ -74,9 +74,11 @@ public:
         if(directon == BACKWARD)
             Position -= Front * velocity;
         if(directon == LEFT)
-            Position += Right * velocity;
-        if(directon == RIGHT)
             Position -= Right * velocity;
+        if(directon == RIGHT)
+            Position += Right * velocity;
+
+        Position.y = 0.0f;
     }
 
     // processes input recieved from a mouse input system. Expects the offset value in the both x and y direction
