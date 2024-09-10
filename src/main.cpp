@@ -15,10 +15,14 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double yps);
 void processInput(GLFWwindow *window);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-glm::vec2 spawn_cube(glm::vec3 cubePositions[]);
+unsigned int createCube();
 unsigned int generateTexture(char* texturePath, Shader &ourShader);
-unsigned int createMenuQuad();
 void renderMenu(Shader &menuShader, unsigned int VAO);
+unsigned int createMenuQuad();
+void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[]);
+void renderButton(Shader &buttonShader, unsigned int VAO);
+unsigned int createButton();
+unsigned int createRectangle(float vertices[], unsigned int sizeOfVertices);
 
 // settings
 const unsigned int SCR_WIDTH = 800;
@@ -59,7 +63,7 @@ int main()
 
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
@@ -75,7 +79,7 @@ int main()
 
     // build and compile our shader zprogram
     // ------------------------------------
-    Shader ourShader("../include/shaders/shader.vs", "../include/shaders/shader.fs");
+    Shader cubeShader("../include/shaders/cube_shader.vs", "../include/shaders/cube_shader.fs");
 
     glm::vec3 cubePositions[] = {
         glm::vec3(0.0f, 0.0f, 0.0f),
@@ -90,19 +94,20 @@ int main()
         glm::vec3(-1.3f, 1.0f, -1.5f)
     };
 
-    glm::vec2 VaoAndVbo = spawn_cube(cubePositions);
-    unsigned VAO = VaoAndVbo.x;
-    unsigned VBO = VaoAndVbo.y;
-
-    unsigned int texture1 = generateTexture("../images/container.jpg", ourShader);
-
+    unsigned int cubeVAO = createCube();
+    unsigned int texture1 = generateTexture("../images/container.jpg", cubeShader);
 
     Shader menuShader("../include/shaders/menu_shader.vs", "../include/shaders/menu_shader.fs");
     unsigned int menuVAO = createMenuQuad();
-    unsigned int menuTexture = generateTexture("../images/menu_texture.png", menuShader);
-
     menuShader.use();
-    menuShader.setVec3("color", glm::vec3(0.0f, 0.0f, 0.0f));
+    menuShader.setVec3("color", glm::vec3(0.663, 0.8f, 0.95f));
+    
+    Shader buttonShader("../include/shaders/menu_shader.vs", "../include/shaders/menu_shader.fs");
+    unsigned int buttonVAO = createButton();
+    buttonShader.use();
+    buttonShader.setVec3("color", glm::vec3(0.949, 0.663, 0.993));
+    
+
 
     // render loop
     // -----------
@@ -126,30 +131,28 @@ int main()
         glBindTexture(GL_TEXTURE_2D, texture1);
 
         // activate shader
-        ourShader.use();
+        cubeShader.use();
 
         // pass projection to shader(note that in this case it could change every frame)
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        ourShader.setMat4("projection", projection);
+        cubeShader.setMat4("projection", projection);
 
         // cameera/view transformation
         glm::mat4 view = camera.GetViewMatrix();
-        ourShader.setMat4("view", view);
+        cubeShader.setMat4("view", view);
 
         // render box
-        glBindVertexArray(VAO);
-        for(unsigned int i = 0 ; i < 10; i++)
-        {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, cubePositions[i]);
-            float angle = 20.0f * i;
-            model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(1.0f, 0.3f, 0.5f));
-            ourShader.setMat4("model", model);
+        glBindVertexArray(cubeVAO);
+        
+        renderCube(cubeShader, cubeVAO, cubePositions);
 
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-        }
-
+        menuShader.use();
         renderMenu(menuShader, menuVAO);
+
+        buttonShader.use();
+        renderButton(buttonShader, buttonVAO);
+
+        //renderButton(buttonShader, buttonVAO);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -157,13 +160,8 @@ int main()
         glfwPollEvents();
     }
 
-    // optional: de-allocate all resources once they've outlived their purpose:
-    // ------------------------------------------------------------------------
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-
     // glfw: terminate, clearing all previously allocated GLFW resources.
-    // ------------------------------------------------------------------
+    // -----------------------------------------------------------------
     glfwTerminate();
     return 0;
 }
@@ -224,7 +222,7 @@ void renderMenu(Shader &menuShader, unsigned int VAO)
 {
     glDisable(GL_DEPTH_TEST);
     // set up an orthographic projection for 2d rendering
-    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(SCR_HEIGHT), 0.f, static_cast<float>(SCR_HEIGHT));
+    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), 0.f, static_cast<float>(SCR_HEIGHT));
     menuShader.use();
     menuShader.setMat4("projection", projection);
 
@@ -237,19 +235,74 @@ void renderMenu(Shader &menuShader, unsigned int VAO)
 
 }
 
+void renderButton(Shader &buttonShader, unsigned int VAO)
+{
+    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), 0.f, static_cast<float>(SCR_HEIGHT));
+    buttonShader.use();
+    buttonShader.setMat4("projection", projection);
+
+    glBindVertexArray(VAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+}
+
+void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[])
+{
+    for(unsigned int i = 0 ; i < 10; i++)
+    {
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, cubePositions[i]);
+        float angle = 20.0f * i;
+        model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(1.0f, 0.3f, 0.5f));
+        cubeShader.setMat4("model", model);
+
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+    }
+
+    glBindVertexArray(VAO);
+    glDrawArrays(GL_TRIANGLES, 0 ,36);
+    glBindVertexArray(0);
+}
+
+unsigned int createButton()
+{
+    float vertices[] = 
+    { 
+        // positions        // texture coords
+        20.0f,  550.0f, 0.0f,  0.0f, 1.0f, // Top-left
+        80.0f, 550.0f, 0.0f,  1.0f, 1.0f, // Top-right
+        80.0f,  500.0f, 0.0f,  1.0f, 0.0f,  // Bottom-right
+
+        20.0f,  550.0f, 0.0f,  0.0f, 1.0f, // Top-left
+        80.0f,  500.0f, 0.0f,  1.0f, 1.0f, // Bottom-right
+        20.0f,  500.0f, 0.0f,  0.0f, 0.0f // Bottom-left
+    };
+
+    unsigned int VAO = createRectangle(vertices, sizeof(vertices));
+    return VAO;
+}
+
+
 unsigned int createMenuQuad()
 {
     float vertices[] = {
         // positions        // texture coords
         0.0f,  600.0f, 0.0f,  0.0f, 1.0f,
-        50.0f, 600.0f, 0.0f,  1.0f, 1.0f,
-        50.0f,  0.0f, 0.0f,  1.0f, 0.0f,
+        100.0f, 600.0f, 0.0f,  1.0f, 1.0f,
+        100.0f,  0.0f, 0.0f,  1.0f, 0.0f,
 
         0.0f,  600.0f, 0.0f,  0.0f, 1.0f,
-        50.0f,  0.0f, 0.0f,  1.0f, 1.0f,
+        100.0f,  0.0f, 0.0f,  1.0f, 1.0f,
         0.0f,  0.0f, 0.0f,  0.0f, 0.0f
     };
 
+    unsigned int VAO = createRectangle(vertices, sizeof(vertices));
+    return VAO;
+
+}
+
+unsigned int createRectangle(float vertices[], unsigned int sizeOfVertices)
+{
     unsigned int VBO, VAO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -257,7 +310,7 @@ unsigned int createMenuQuad()
     glBindVertexArray(VAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeOfVertices, vertices, GL_STATIC_DRAW);
 
     // Position attribute
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
@@ -268,10 +321,9 @@ unsigned int createMenuQuad()
     glEnableVertexAttribArray(1);
 
     return VAO;
-
 }
 
-glm::vec2 spawn_cube(glm::vec3 cubePositions[])
+unsigned int createCube()
 {
     float vertices[] = {
         -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
@@ -333,8 +385,7 @@ glm::vec2 spawn_cube(glm::vec3 cubePositions[])
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE,  5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    glm::vec2 VaoVbo = glm::vec2(VAO, VBO);
-    return VaoVbo;
+    return VAO;
 }
 
 unsigned int generateTexture(char* texturePath, Shader &ourShader)
@@ -374,3 +425,4 @@ unsigned int generateTexture(char* texturePath, Shader &ourShader)
     
     return texture;
 }
+
