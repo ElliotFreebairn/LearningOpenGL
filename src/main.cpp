@@ -7,7 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <shaders/shader.h>
 #include <camera/camera.h>
-
+#include <vector>
 
 #include <iostream>
 
@@ -16,13 +16,14 @@ void mouse_callback(GLFWwindow* window, double xpos, double yps);
 void processInput(GLFWwindow *window);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 unsigned int createCube();
-unsigned int generateTexture(char* texturePath, Shader &ourShader);
+unsigned int generateTexture(const  char* texturePath, Shader &ourShader);
 void renderMenu(Shader &menuShader, unsigned int VAO);
 unsigned int createMenuQuad();
-void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[]);
+void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[], bool isNegative);
 void renderButton(Shader &buttonShader, unsigned int VAO);
 unsigned int createButton();
 unsigned int createRectangle(float vertices[], unsigned int sizeOfVertices);
+struct Button;
 
 // settings
 const unsigned int SCR_WIDTH = 800;
@@ -34,7 +35,23 @@ float lastY = SCR_HEIGHT / 2.0f;
 float delaTime = 0.0f;
 float lastFrame = 0.0f;
 bool firstMouse = true;
+bool hasOpenedMenu = false;
+bool menuKeyPressed = false;
+bool isPaused = false;
+float cubeRotations[10] = {0.0f};
+std::vector<Button> buttonPositions;
+bool inButton = false;
+bool buttonPressed = false;
+bool isNegative = false;
 
+
+struct Button
+{
+    glm::vec2 topLeft;
+    glm::vec2 topRight;
+    glm::vec2 bottomLeft;
+    glm::vec2 bottomRight;
+};
 
 int main()
 {
@@ -60,10 +77,9 @@ int main()
         return -1;
     }
 
-
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
@@ -76,7 +92,8 @@ int main()
     }
 
     glEnable(GL_DEPTH_TEST);
-
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable( GL_BLEND );
     // build and compile our shader zprogram
     // ------------------------------------
     Shader cubeShader("../include/shaders/cube_shader.vs", "../include/shaders/cube_shader.fs");
@@ -105,7 +122,7 @@ int main()
     Shader buttonShader("../include/shaders/menu_shader.vs", "../include/shaders/menu_shader.fs");
     unsigned int buttonVAO = createButton();
     buttonShader.use();
-    buttonShader.setVec3("color", glm::vec3(0.949, 0.663, 0.993));
+    buttonShader.setVec3("color", glm::vec3(0.0, 0.0, 0.0));
     
 
 
@@ -144,19 +161,23 @@ int main()
         // render box
         glBindVertexArray(cubeVAO);
         
-        renderCube(cubeShader, cubeVAO, cubePositions);
+        renderCube(cubeShader, cubeVAO, cubePositions, isNegative);
 
-        menuShader.use();
-        renderMenu(menuShader, menuVAO);
+        if(hasOpenedMenu)
+        {
+            menuShader.use();
+            renderMenu(menuShader, menuVAO);
 
-        buttonShader.use();
-        renderButton(buttonShader, buttonVAO);
+            buttonShader.use();
+            renderButton(buttonShader, buttonVAO);
+        }
 
         //renderButton(buttonShader, buttonVAO);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
+        glFinish();
         glfwPollEvents();
     }
 
@@ -166,11 +187,33 @@ int main()
     return 0;
 }
 
+
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 {
     float xPos = static_cast<float>(xposIn);
     float yPos = static_cast<float>(yposIn);
 
+    // Adjust yPos according to your coordinate system
+    yPos = SCR_HEIGHT - yPos;
+
+    // Handle menu state
+    if(hasOpenedMenu)
+    {
+        for(const Button& button : buttonPositions)
+        {
+            if((xPos > button.topLeft.x && xPos < button.topRight.x) && (yPos > button.bottomLeft.y && yPos < button.topLeft.y))
+            {
+                inButton = true;
+            }
+        }
+        return;
+    }
+    else
+    {
+        inButton = false;
+    }
+
+    // Initialize lastX and lastY only once
     if(firstMouse)
     {
         lastX = xPos;
@@ -178,31 +221,18 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
         firstMouse = false;
     }
 
+    // Calculate offsets
     float xoffset = xPos - lastX;
-    float yoffset = lastY - yPos; // reversed since y-coordinates go from bottom to up
+    float yoffset = yPos - lastY; 
 
+    // Update lastX and lastY
     lastX = xPos;
     lastY = yPos;
 
+    // Pass offsets to camera processing
     camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
-// process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
-// ---------------------------------------------------------------------------------------------------------
-void processInput(GLFWwindow *window)
-{
-    const float cameraSpeed = 2.5f * delaTime;
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-    if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, delaTime);
-    if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, delaTime);
-    if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, delaTime);
-    if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, delaTime);
-}
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
 // ---------------------------------------------------------------------------------------------
@@ -246,14 +276,24 @@ void renderButton(Shader &buttonShader, unsigned int VAO)
     glBindVertexArray(0);
 }
 
-void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[])
+void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[], bool isNegative)
 {
     for(unsigned int i = 0 ; i < 10; i++)
     {
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, cubePositions[i]);
-        float angle = 20.0f * i;
-        model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(1.0f, 0.3f, 0.5f));
+        if(!hasOpenedMenu)
+        {
+            if(isNegative)
+            {
+                cubeRotations[i] -= 0.01f;
+            }
+            else
+            {
+                cubeRotations[i] += 0.01f;
+            }
+        }
+        model = glm::rotate(model, cubeRotations[i], glm::vec3(1.0f, 0.3f, 0.5f));
         cubeShader.setMat4("model", model);
 
         glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -278,6 +318,14 @@ unsigned int createButton()
         20.0f,  500.0f, 0.0f,  0.0f, 0.0f // Bottom-left
     };
 
+    Button buttonPosition;
+    buttonPosition.topLeft = glm::vec2(vertices[0], vertices[1]);
+    buttonPosition.topRight = glm::vec2(vertices[5], vertices[6]);
+    buttonPosition.bottomRight = glm::vec2(vertices[10], vertices[11]);
+    buttonPosition.bottomLeft = glm::vec2(vertices[25], vertices[26]);
+
+
+    buttonPositions.push_back(buttonPosition);
     unsigned int VAO = createRectangle(vertices, sizeof(vertices));
     return VAO;
 }
@@ -388,7 +436,7 @@ unsigned int createCube()
     return VAO;
 }
 
-unsigned int generateTexture(char* texturePath, Shader &ourShader)
+unsigned int generateTexture(const char* texturePath, Shader &ourShader)
 {
     // load and create the texture
     unsigned int texture;
@@ -426,3 +474,54 @@ unsigned int generateTexture(char* texturePath, Shader &ourShader)
     return texture;
 }
 
+// process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
+// ---------------------------------------------------------------------------------------------------------
+void processInput(GLFWwindow *window)
+{
+    const float cameraSpeed = 2.5f * delaTime;
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+    if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.ProcessKeyboard(FORWARD, delaTime);
+    if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        camera.ProcessKeyboard(BACKWARD, delaTime);
+    if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        camera.ProcessKeyboard(LEFT, delaTime);
+    if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        camera.ProcessKeyboard(RIGHT, delaTime);
+
+    // Handle menu toggle
+    if(glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS && !menuKeyPressed)
+    {
+        hasOpenedMenu = !hasOpenedMenu; // Togle menu state
+        menuKeyPressed = true;
+        
+        if(hasOpenedMenu)
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+        else
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        }
+    }
+    if(glfwGetKey(window, GLFW_KEY_M) == GLFW_RELEASE)
+    {
+        menuKeyPressed = false; // Reset the key state when released
+    }
+
+    // Handle button press
+    if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && inButton)
+    {
+        if(!buttonPressed)
+        {
+            isNegative = !isNegative;
+            buttonPressed = true;
+
+        }
+    }
+    if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE)
+    {
+        buttonPressed = false;
+    }
+}

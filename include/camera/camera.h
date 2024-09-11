@@ -17,7 +17,7 @@ enum Camera_Movement {
 const float YAW = -90.0f;
 const float PITCH = 0.0f;
 const float SPEED = 2.5f;
-const float SENSITIVITY = 0.1f;
+const float SENSITIVITY = 0.05f;
 const float ZOOM = 45.0F;
 
 // an abstract camera class that processes input and calculates the corresponding Euler angles, Vectors and Matrices for use in OpenGL
@@ -78,7 +78,7 @@ public:
         if(directon == RIGHT)
             Position += Right * velocity;
 
-        Position.y = 0.0f;
+        
     }
 
     // processes input recieved from a mouse input system. Expects the offset value in the both x and y direction
@@ -98,6 +98,8 @@ public:
             if(Pitch < -89.0f)
                 Pitch = -89.0f;
         }
+
+        Yaw = glm::mod(Yaw, 360.0f);
 
         // update Front, Right and Up Vectors using the updated Euler angles
         updateCameraVectors();
@@ -122,6 +124,13 @@ private:
         front.y = sin(glm::radians(Pitch));
         front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
         Front = glm::normalize(front);
+
+        // Ensure Front is not zero vector
+        if (glm::length(Front) < 0.01f) 
+        {
+            Front = glm::vec3(0.0f, 0.0f, -1.0f);
+        }
+    
         // also recalculate the Right and Up vector
         Right = glm::normalize(glm::cross(Front, WorldUp));
         Up = glm::normalize(glm::cross(Right, Front));
