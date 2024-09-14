@@ -9,6 +9,10 @@
 #include <camera/camera.h>
 #include <vector>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <map>
+
 #include <iostream>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -40,9 +44,13 @@ bool menuKeyPressed = false;
 bool isPaused = false;
 float cubeRotations[10] = {0.0f};
 std::vector<Button> buttonPositions;
+
 bool inButton = false;
 bool buttonPressed = false;
 bool isNegative = false;
+
+bool xPressed = false;
+bool coordinatesOn = false;
 
 
 struct Button
@@ -52,6 +60,15 @@ struct Button
     glm::vec2 bottomLeft;
     glm::vec2 bottomRight;
 };
+
+struct Character {
+    unsigned int TextureID; // ID handle of the glyph texture
+    glm::ivec2 Size; // Size of glyph
+    glm::ivec2 Bearing; // Offset from baseline left/top of glyph
+    unsigned int Advance; // Offset to advance to next glyph
+};
+
+std::map<char, Character> Characters;
 
 int main()
 {
@@ -124,7 +141,66 @@ int main()
     buttonShader.use();
     buttonShader.setVec3("color", glm::vec3(0.0, 0.0, 0.0));
     
+    // Loading and dealing with text
+    FT_Library ft;
+    if(FT_Init_FreeType(&ft))
+    {
+        std::cout << "ERROR::FREETYPE: Could not init free type libary" << std::endl;
+        return -1;
+    }
+    FT_Face face;
+    if(FT_New_Face(ft, "font/arial.tff", 0, &face))
+    {
+        std::cout << "ERROR::FREETYPE: Failed to load font" << std::endl;
+        return -1;
+    }
 
+    FT_Set_Pixel_Sizes(face, 0, 48);
+    if(FT_Load_Char(face, 'X', FT_LOAD_RENDER))
+    {
+        std::cout << "ERROR::FREETYPE: Failed to load Glypth" << std::endl;
+        return -1;
+    }
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // Disable byte-allignment restriction
+    
+    for(unsigned char c = 0; c < 128; c++)
+    {
+        // Load character glyph
+        if(FT_Load_Char(face, c, FT_LOAD_RENDER))
+        {
+            std::cout << "ERROR::FREETYPE: Failed to load glyph" << std::endl;
+            continue;
+        }
+        // generate texture
+        unsigned int texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RED,
+            face->glyph->bitmap.width,
+            face->glyph->bitmap.rows,
+            0,
+            GL_RED,
+            GL_UNSIGNED_BYTE,
+            face->glyph->bitmap.buffer
+        );
+        // set texture options
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        // now store character for later use
+        Character character = {
+            texture,
+            glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
+            glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
+            face->glyph->advance.x
+        };
+        Characters.insert(std::pair<char, Character>(c, character));
+    }
 
     // render loop
     // -----------
@@ -193,14 +269,20 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     float xPos = static_cast<float>(xposIn);
     float yPos = static_cast<float>(yposIn);
 
-    // Adjust yPos according to your coordinate system
-    yPos = SCR_HEIGHT - yPos;
-
     // Handle menu state
     if(hasOpenedMenu)
     {
         for(const Button& button : buttonPositions)
         {
+            std::cout << coordinatesOn;
+            if(coordinatesOn)
+            {
+                std::cout << "Mouse xPos: " << xPos << ", Mouse yPos: " << yPos << "| Button topLeft X: " << button.topLeft.x <<
+                ", Button topRight X: " << button.topRight.x << ", Button bottomLeft Y: " << button.bottomLeft.y << 
+                ", Button topLeft Y: " << button.topLeft.y;
+
+                //coordinatesOn = false;
+            }
             if((xPos > button.topLeft.x && xPos < button.topRight.x) && (yPos > button.bottomLeft.y && yPos < button.topLeft.y))
             {
                 inButton = true;
@@ -223,7 +305,7 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 
     // Calculate offsets
     float xoffset = xPos - lastX;
-    float yoffset = yPos - lastY; 
+    float yoffset = lastY - yPos;
 
     // Update lastX and lastY
     lastX = xPos;
@@ -250,6 +332,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 
 void renderMenu(Shader &menuShader, unsigned int VAO)
 {
+
     glDisable(GL_DEPTH_TEST);
     // set up an orthographic projection for 2d rendering
     glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), 0.f, static_cast<float>(SCR_HEIGHT));
@@ -276,6 +359,11 @@ void renderButton(Shader &buttonShader, unsigned int VAO)
     glBindVertexArray(0);
 }
 
+void renderMouseCoordinates(Shader &coordinatesShader, unsigned int VAO)
+{
+
+}
+
 void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[], bool isNegative)
 {
     for(unsigned int i = 0 ; i < 10; i++)
@@ -286,22 +374,20 @@ void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[],
         {
             if(isNegative)
             {
-                cubeRotations[i] -= 0.01f;
+                cubeRotations[i] += 0.01f;
             }
             else
             {
-                cubeRotations[i] += 0.01f;
-            }
-        }
-        model = glm::rotate(model, cubeRotations[i], glm::vec3(1.0f, 0.3f, 0.5f));
-        cubeShader.setMat4("model", model);
+                cubeRotations[i] -= 0.01f; 
+            } 
+        } 
+        model = glm::rotate(model, cubeRotations[i], glm::vec3(1.0f, 0.3f, 0.5f)); 
+        cubeShader.setMat4("model", model); glDrawArrays(GL_TRIANGLES, 0, 36); 
+    } 
 
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-    }
-
-    glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0 ,36);
-    glBindVertexArray(0);
+    glBindVertexArray(VAO); 
+    glDrawArrays(GL_TRIANGLES, 0 ,36); 
+    glBindVertexArray(0); 
 }
 
 unsigned int createButton()
@@ -474,6 +560,7 @@ unsigned int generateTexture(const char* texturePath, Shader &ourShader)
     return texture;
 }
 
+
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow *window)
@@ -517,11 +604,21 @@ void processInput(GLFWwindow *window)
         {
             isNegative = !isNegative;
             buttonPressed = true;
-
         }
     }
     if(glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE)
     {
         buttonPressed = false;
+    }
+
+    // Developer commands
+    if(glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS && !xPressed)
+    {
+        coordinatesOn = !coordinatesOn;
+        xPressed = true;
+    }
+    if(glfwGetKey(window, GLFW_KEY_X) == GLFW_RELEASE)
+    {
+        xPressed = false;
     }
 }
