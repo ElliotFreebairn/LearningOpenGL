@@ -18,6 +18,8 @@
 #include <iostream>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+void createFloor(Shader &floorShader, unsigned int VAO, unsigned int VBO);
+void renderFloor(Shader &floorShader, unsigned int VAO);
 void mouse_callback(GLFWwindow* window, double xpos, double yps);
 void processInput(GLFWwindow *window);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -41,8 +43,8 @@ struct Button;
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
-unsigned int NEW_HEIGHT;
-unsigned int NEW_WIDTH;
+unsigned int NEW_HEIGHT = SCR_HEIGHT;
+unsigned int NEW_WIDTH = SCR_WIDTH;
 
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 
@@ -72,6 +74,7 @@ bool isNegative = false;
 bool xPressed = false;
 bool coordinatesOn = false;
 
+glm::mat4 projection;
 
 enum UIElementType {
     BUTTON,
@@ -177,6 +180,7 @@ int main()
     std::cout << "Menu VAO: " << menuVAO << ", Menu VBO: " << menuVBO;
     menuShader.use();
     menuShader.setVec3("color", glm::vec3(1, 1.0f, 1.0f));
+    menuShader.setFloat("transparency", 0.25f);
     
     Shader buttonShader("../include/shaders/menu_shader.vs", "../include/shaders/menu_shader.fs");
     GLuint buttonVAO, buttonVBO;
@@ -184,9 +188,20 @@ int main()
     std::cout << "Button VAO: " << buttonVAO << ", Button VBO: " << buttonVBO;
     buttonShader.use();
     buttonShader.setVec3("color", glm::vec3(0.0, 0.0f, 0.0f));
+    buttonShader.setFloat("transparency", 0.65f);
 
     uiData.menuVBO = menuVBO;
     uiData.buttonVBO = buttonVBO;
+
+    // Need to create a floor which the player walk across 
+    // ------------------------------------------------------------------------------------------
+    Shader floorShader("../include/shaders/cube_shader.vs", "../include/shaders/cube_shader.fs");
+    unsigned int texture2 = generateTexture("../images/container.jpg", floorShader);
+    GLuint floorVAO, floorVBO;
+    createVaoVbo(floorVAO, floorVBO, 180, 5, 3, GL_STATIC_DRAW);
+    floorShader.use();
+
+
 
     updateUI(MENU, menuVBO, SCR_WIDTH, SCR_HEIGHT);
     updateUI(BUTTON, buttonVBO, SCR_WIDTH, SCR_HEIGHT);
@@ -259,7 +274,7 @@ int main()
         cubeShader.use();
 
         // pass projection to shader(note that in this case it could change every frame)
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)NEW_WIDTH / (float)NEW_HEIGHT, 0.1f, 100.0f);
         cubeShader.setMat4("projection", projection);
 
         // cameera/view transformation
@@ -269,7 +284,12 @@ int main()
         // render box
         glBindVertexArray(cubeVAO);
 
-        renderCube(cubeShader, cubeVAO, cubePositions, isNegative);
+        //renderCube(cubeShader, cubeVAO, cubePositions, isNegative);
+
+        glBindTexture(GL_TEXTURE_2D, texture2);
+
+        renderFloor(floorShader, floorVAO);
+
         
         if(hasOpenedMenu)
         {
@@ -281,8 +301,8 @@ int main()
             renderButton(buttonShader, buttonVAO);
 
             textShader.use();
-            RenderText(textShader, GetCursorPosAsString() , 150.0f, 550.0f, 0.3f, glm::vec3(0.5, 0.8f, 0.2f), textVAO, textVBO);
-            RenderText(textShader, GetButtonPosAsString() , 150.0f, 500.0f, 0.3f, glm::vec3(0.5, 0.8f, 0.2f), buttonPosVAO, buttonPosVBO);
+            RenderText(textShader, GetCursorPosAsString() , 150.0f, 350.0f, 0.25f, glm::vec3(0.5, 0.8f, 0.2f), textVAO, textVBO);
+            RenderText(textShader, GetButtonPosAsString() , 150.0f, 300.0f, 0.25f, glm::vec3(0.5, 0.8f, 0.2f), buttonPosVAO, buttonPosVBO);
         
         }
 
@@ -301,6 +321,7 @@ int main()
     return 0;
 }
 
+// Call back functions controlled by glfw
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
 // ---------------------------------------------------------------------------------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -311,12 +332,12 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 
     NEW_WIDTH = width;
     NEW_HEIGHT = height;
+    
 
     updateUI(MENU, uiData.menuVBO, width, height);
     updateUI(BUTTON, uiData.buttonVBO, width, height);
 
 }
-
 
 
 void mouse_callback(GLFWwindow *window, double xposIn, double yposIn)
@@ -333,7 +354,7 @@ void mouse_callback(GLFWwindow *window, double xposIn, double yposIn)
         firstMouse = false;
     }
 
-    float yPosFlpped = static_cast<float>(NEW_HEIGHT) - yPos;
+    float yPosFlpped = std::abs(static_cast<float>(NEW_HEIGHT) - yPos);
      // Handle menu state
     if(hasOpenedMenu)
     {
@@ -341,15 +362,6 @@ void mouse_callback(GLFWwindow *window, double xposIn, double yposIn)
         menuLastY = yPosFlpped;
         for(const Button& button : buttonPositions)
         {
-            std::cout << coordinatesOn;
-            if(coordinatesOn)
-            {
-                std::cout << "Mouse xPos: " << menuLastX << ", Mouse yPos: " << menuLastY << "| Button topLeft X: " << button.topLeft.x <<
-                ", Button topRight X: " << button.topRight.x << ", Button bottomLeft Y: " << button.bottomLeft.y << 
-                ", Button topLeft Y: " << button.topLeft.y;
-
-                //coordinatesOn = false;
-            }
             if((menuLastX > button.topLeft.x && xPos < button.topRight.x) && (menuLastY > button.bottomLeft.y && yPos < button.topLeft.y))
             {
                 inButton = true;
@@ -380,12 +392,14 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
     camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
+// Rendering
+// --------------------------------------------------------------------------------------------------------------
+
 void renderMenu(Shader &menuShader, unsigned int VAO)
 {
 
     glDisable(GL_DEPTH_TEST);
-    // set up an orthographic projection for 2d rendering
-    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), 0.f, static_cast<float>(SCR_HEIGHT));
+    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(NEW_WIDTH), 0.f, static_cast<float>(NEW_HEIGHT));
     menuShader.use();
     menuShader.setMat4("projection", projection);
 
@@ -400,18 +414,15 @@ void renderMenu(Shader &menuShader, unsigned int VAO)
 
 void renderButton(Shader &buttonShader, unsigned int VAO)
 {
-    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), 0.f, static_cast<float>(SCR_HEIGHT));
+    glDisable(GL_DEPTH_TEST);
+    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(NEW_WIDTH), 0.f, static_cast<float>(NEW_HEIGHT));
     buttonShader.use();
     buttonShader.setMat4("projection", projection);
 
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
-}
-
-void renderMouseCoordinates(Shader &coordinatesShader, unsigned int VAO)
-{
-
+    glEnable(GL_DEPTH_TEST);
 }
 
 void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[], bool isNegative)
@@ -432,75 +443,39 @@ void renderCube(Shader &cubeShader, unsigned int VAO, glm::vec3 cubePositions[],
             } 
         } 
         model = glm::rotate(model, cubeRotations[i], glm::vec3(1.0f, 0.3f, 0.5f)); 
-        cubeShader.setMat4("model", model); glDrawArrays(GL_TRIANGLES, 0, 36); 
+        cubeShader.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0 ,36); 
     } 
 
     glBindVertexArray(VAO); 
-    glDrawArrays(GL_TRIANGLES, 0 ,36); 
     glBindVertexArray(0); 
 }
 
 
-void updateUI(UIElementType type, GLuint vboID, int screenWidth, int screenHeight) {
-    float vertices[30]; // Array to hold vertex data
+void renderFloor(Shader &floorShader, unsigned int VAO)
+{
+    glEnable(GL_DEPTH_TEST);
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)NEW_WIDTH / (float)NEW_HEIGHT, 0.1f, 100.0f);
+    floorShader.use();
+    floorShader.setMat4("projection", projection);
 
-    // Variables for dimensions and positions
-    float width, height, x, y;
+    glm::mat4 view = camera.GetViewMatrix();
+    floorShader.setMat4("view", view);
 
-    switch (type) {
-        case BUTTON: {
-            width = screenWidth * 0.1f;
-            height = screenHeight * 0.1f;
+    glm::vec3 cubePosition = {
+        0.0f, 0.0f, 0.0f
+    };
 
-            x = 0.0f;
-            y = screenHeight - height;
-            break;
-        }
-        case MENU: {
-            width = screenWidth * 0.1f;
-            height = screenHeight;
-
-            x = 0.0f;
-            y = 0.0f;
-            break;
-        }
-    }
-
-    // Define vertices and texture coordinates
-    vertices[0] = x; vertices[1] = y; vertices[2] = 0.0f; // Bottom-left position
-    vertices[3] = 0.0f; vertices[4] = 0.0f; // Bottom-left texture coordinate
-
-    vertices[5] = x + width; vertices[6] = y; vertices[7] = 0.0f; // Bottom-right position
-    vertices[8] = 1.0f; vertices[9] = 0.0f; // Bottom-right texture coordinate
-
-    vertices[10] = x + width; vertices[11] = y + height; vertices[12] = 0.0f; // Top-right position
-    vertices[13] = 1.0f; vertices[14] = 1.0f; // Top-right texture coordinate
-
-    vertices[15] = x; vertices[16] = y; vertices[17] = 0.0f; // Bottom-left position
-    vertices[18] = 0.0f; vertices[19] = 0.0f; // Bottom-left texture coordinate
-
-    vertices[20] = x + width; vertices[21] = y + height; vertices[22] = 0.0f; // Top-right position
-    vertices[23] = 1.0f; vertices[24] = 1.0f; // Top-right texture coordinate
-
-    vertices[25] = x; vertices[26] = y + height; vertices[27] = 0.0f; // Top-left position
-    vertices[28] = 0.0f; vertices[29] = 1.0f; // Top-left texture coordinate
-
-    // Update the VBO with the new vertices data
-    glBindBuffer(GL_ARRAY_BUFFER, vboID);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    // Update buttonPositions if it's a button
-    if (type == BUTTON) {
-        buttonPositions.clear();
-        Button buttonPosition;
-        buttonPosition.topLeft = glm::vec2(x, y + height);
-        buttonPosition.topRight = glm::vec2(x + width, y + height);
-        buttonPosition.bottomRight = glm::vec2(x + width, y);
-        buttonPosition.bottomLeft = glm::vec2(x, y);
-        buttonPositions.push_back(buttonPosition);
-    }
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(0.0f, -1.0f, 0.0f)); // Adjust the height
+    model = glm::scale(model, glm::vec3(10.0f, 1.0f, 10.0f)); // Make it a large flat plane
+    floorShader.setMat4("model", model);
+     
+    glBindVertexArray(VAO);
+     glDrawArrays(GL_TRIANGLES, 0, 36);
+     glBindVertexArray(0);
 }
+
 
 
 void RenderText(Shader &s, std::string text, float x, float y, float scale, glm::vec3 color, unsigned int VAO, unsigned int VBO)
@@ -546,6 +521,70 @@ void RenderText(Shader &s, std::string text, float x, float y, float scale, glm:
 
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+// Ui updating (menu, button, etc..)
+// ----------------------------------------------------------------------------------
+
+void updateUI(UIElementType type, GLuint vboID, int screenWidth, int screenHeight) {
+    float vertices[30]; // Array to hold vertex data
+
+    // Variables for dimensions and positions
+    float width, height, x, y;
+
+    switch (type) {
+        case BUTTON: {
+            width = screenWidth * 0.1f;
+            height = screenHeight * 0.1f;
+
+            x = 0.0f;
+            y = screenHeight - height;
+            break;
+        }
+        case MENU: {
+            width =  screenWidth * 0.1f;
+            height = screenHeight;
+
+            x = 0.0f;
+            y = 0.0f;
+            break;
+        }
+    }
+
+    // Define vertices and texture coordinates
+    vertices[0] = x; vertices[1] = y; vertices[2] = 0.0f; // Bottom-left position
+    vertices[3] = 0.0f; vertices[4] = 0.0f; // Bottom-left texture coordinate
+
+    vertices[5] = x + width; vertices[6] = y; vertices[7] = 0.0f; // Bottom-right position
+    vertices[8] = 1.0f; vertices[9] = 0.0f; // Bottom-right texture coordinate
+
+    vertices[10] = x + width; vertices[11] = y + height; vertices[12] = 0.0f; // Top-right position
+    vertices[13] = 1.0f; vertices[14] = 1.0f; // Top-right texture coordinate
+
+    vertices[15] = x; vertices[16] = y; vertices[17] = 0.0f; // Bottom-left position
+    vertices[18] = 0.0f; vertices[19] = 0.0f; // Bottom-left texture coordinate
+
+    vertices[20] = x + width; vertices[21] = y + height; vertices[22] = 0.0f; // Top-right position
+    vertices[23] = 1.0f; vertices[24] = 1.0f; // Top-right texture coordinate
+
+    vertices[25] = x; vertices[26] = y + height; vertices[27] = 0.0f; // Top-left position
+    vertices[28] = 0.0f; vertices[29] = 1.0f; // Top-left texture coordinate
+
+    // Update the VBO with the new vertices data
+    glBindBuffer(GL_ARRAY_BUFFER, vboID);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // Update buttonPositions if it's a button
+    if (type == BUTTON) {
+        buttonPositions.clear();
+        Button buttonPosition;
+        buttonPosition.topLeft = glm::vec2(x, y + height);
+        buttonPosition.topRight = glm::vec2(x + width, y + height);
+        buttonPosition.bottomRight = glm::vec2(x + width, y);
+        buttonPosition.bottomLeft = glm::vec2(x, y);
+        buttonPositions.push_back(buttonPosition);
+    }
 }
 
 void createVaoVbo(GLuint &vaoID, GLuint &vboID, unsigned int sizeOfVertices, unsigned int stride, unsigned int offset, GLenum usageType)
@@ -627,51 +666,8 @@ void initalizeTextRendering(FT_Library &ft, FT_Face &face)
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 }
 
-
-unsigned int createButton()
-{
-    float vertices[] = 
-    { 
-        // positions        // texture coords
-        20.0f,  550.0f, 0.0f,  0.0f, 1.0f, // Top-left
-        80.0f, 550.0f, 0.0f,  1.0f, 1.0f, // Top-right
-        80.0f,  500.0f, 0.0f,  1.0f, 0.0f,  // Bottom-right
-
-        20.0f,  550.0f, 0.0f,  0.0f, 1.0f, // Top-left
-        80.0f,  500.0f, 0.0f,  1.0f, 1.0f, // Bottom-right
-        20.0f,  500.0f, 0.0f,  0.0f, 0.0f // Bottom-left
-    };
-
-    Button buttonPosition;
-    buttonPosition.topLeft = glm::vec2(vertices[0], vertices[1]);
-    buttonPosition.topRight = glm::vec2(vertices[5], vertices[6]);
-    buttonPosition.bottomRight = glm::vec2(vertices[10], vertices[11]);
-    buttonPosition.bottomLeft = glm::vec2(vertices[25], vertices[26]);
-
-
-    buttonPositions.push_back(buttonPosition);
-    unsigned int VAO = createRectangle(vertices, sizeof(vertices));
-    return VAO;
-}
-
-
-unsigned int createMenuQuad()
-{
-    float vertices[] = {
-        // positions        // texture coords
-        0.0f,  600.0f, 0.0f,  0.0f, 1.0f,
-        100.0f, 600.0f, 0.0f,  1.0f, 1.0f,
-        100.0f,  0.0f, 0.0f,  1.0f, 0.0f,
-
-        0.0f,  600.0f, 0.0f,  0.0f, 1.0f,
-        100.0f,  0.0f, 0.0f,  1.0f, 1.0f,
-        0.0f,  0.0f, 0.0f,  0.0f, 0.0f
-    };
-
-    unsigned int VAO = createRectangle(vertices, sizeof(vertices));
-    return VAO;
-
-}
+// Creation of objects (quads, cubes, textures, etc..)
+// ----------------------------------------------------------------------------------
 
 std::vector<unsigned int>  createTextQuad()
 {
@@ -690,26 +686,55 @@ std::vector<unsigned int>  createTextQuad()
 
 }
 
-unsigned int createRectangle(float vertices[], unsigned int sizeOfVertices)
+void createFloor(Shader &floorShader, unsigned int VAO, unsigned int VBO)
 {
-    unsigned int VBO, VAO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
+    float vertices[] = {
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
 
-    glBindVertexArray(VAO);
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
+    };
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeOfVertices, vertices, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
 
-    // Position attribute
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // texture coord attribute
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    return VAO;
 }
 
 unsigned int createCube()
@@ -815,6 +840,8 @@ unsigned int generateTexture(const char* texturePath, Shader &ourShader)
     return texture;
 }
 
+// Helper functions
+// ------------------------------------------------------------------------------------------------------------------------------------
 std::string GetCursorPosAsString()
 {
     std::string cursorPos = "Cursor X Pos = " +  std::to_string((int)menuLastX) + ": Cursor Y Pos = " + std::to_string((int)menuLastY);
@@ -858,7 +885,7 @@ void processInput(GLFWwindow *window)
         }
         else
         {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
         }
     }
     if(glfwGetKey(window, GLFW_KEY_M) == GLFW_RELEASE)
